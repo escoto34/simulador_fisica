@@ -252,3 +252,12 @@ function renderParams() {
     });
   }, 50);
 }
+
+export function getState() {
+  return { params: { ...params } };
+}
+export function setState(s) {
+  if (!s?.params) return;
+  Object.assign(params, s.params);
+  if (typeof renderParams === 'function') renderParams();
+}

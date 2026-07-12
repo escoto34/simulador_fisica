@@ -1,8 +1,12 @@
-# Cloudflare Pages headers
+# Cloudflare Pages / cabeceras de seguridad (producción)
 /*
   X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
-  Permissions-Policy: interest-cohort=()
+  Permissions-Policy: interest-cohort=(), camera=(), microphone=(), geolocation=()
+  Cross-Origin-Opener-Policy: same-origin
+  # CSP permisiva con ES modules locales; sin eval. Ajusta si añades CDNs.
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'
 
 /sim/*
   Cache-Control: public, max-age=300

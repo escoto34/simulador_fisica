@@ -20,7 +20,8 @@ import {
   signOutCloud,
   getCloudSession,
   pushExam,
-  fetchSchoolWorks
+  fetchSchoolWorks,
+  upsertTeacherProfile
 } from './supabase-api.js';
 
 const authPanel = document.getElementById('authPanel');
@@ -205,6 +206,16 @@ document.getElementById('authForm')?.addEventListener('submit', async (e) => {
       cs.schoolName = school;
       localStorage.setItem('fisicahn_sb_session_v1', JSON.stringify(cs));
     }
+    try {
+      const rec = getTeacherRecord();
+      await upsertTeacherProfile({
+        email: cs?.email,
+        schoolName: school,
+        schoolKey: rec?.schoolKey || normalizeSchool(school)
+      });
+    } catch {
+      /* ignore */
+    }
     setMsg(authMsg, 'Sesión iniciada.', true);
     showDash();
   } catch (err) {
@@ -226,6 +237,17 @@ document.getElementById('btnRegister')?.addEventListener('click', async () => {
     await signUpTeacher(email, pass, school);
     await registerTeacher(school, pass);
     await loginTeacher(school, pass);
+    try {
+      const rec = getTeacherRecord();
+      const cs = getCloudSession();
+      await upsertTeacherProfile({
+        email: cs?.email || email,
+        schoolName: school,
+        schoolKey: rec?.schoolKey || normalizeSchool(school)
+      });
+    } catch {
+      /* ignore */
+    }
     setMsg(
       authMsg,
       'Cuenta creada. Si debes confirmar el email, revisa tu bandeja antes de generar códigos de examen.',

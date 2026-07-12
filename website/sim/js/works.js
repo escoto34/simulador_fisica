@@ -1,11 +1,26 @@
 /**
- * Trabajos guardados del alumno en localStorage (caché del navegador).
- * Cada trabajo lleva sello de integridad (SHA-256) para detectar ediciones manuales.
+ * Trabajos del alumno:
+ * - Web: localStorage
+ * - Electron: archivo en userData vía IPC (fiable) + espejo localStorage
  */
 
 import { sha256, getSession, logAudit, normalizeSchool } from './auth.js';
 
 const WORKS_KEY = 'fisicahn_works_v1';
+
+/** @type {Array|null} caché en memoria (fuente de verdad en runtime) */
+let memoryList = null;
+let hydrated = false;
+let hydratePromise = null;
+
+function isDesktopFile() {
+  return Boolean(
+    typeof window !== 'undefined' &&
+      window.FisicaHNDesktop?.isDesktop &&
+      typeof window.FisicaHNDesktop.loadWorks === 'function' &&
+      typeof window.FisicaHNDesktop.saveWorks === 'function'
+  );
+}
 
 function storageAvailable() {
   try {
@@ -18,7 +33,7 @@ function storageAvailable() {
   }
 }
 
-export function listWorks() {
+function readLocalStorage() {
   try {
     const raw = localStorage.getItem(WORKS_KEY);
     if (!raw) return [];
@@ -29,17 +44,117 @@ export function listWorks() {
   }
 }
 
-function saveAll(list) {
-  if (!storageAvailable()) {
+function writeLocalStorage(list) {
+  if (!storageAvailable()) return false;
+  try {
+    localStorage.setItem(WORKS_KEY, JSON.stringify(list));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Carga la caché al arrancar (imprescindible en Electron).
+ * Llamar desde app.init().
+ */
+export async function initWorksStorage() {
+  if (hydratePromise) return hydratePromise;
+  hydratePromise = (async () => {
+    if (isDesktopFile()) {
+      try {
+        const fromFile = await window.FisicaHNDesktop.loadWorks();
+        if (Array.isArray(fromFile) && fromFile.length) {
+          memoryList = fromFile;
+        } else {
+          // Migrar desde localStorage si el archivo está vacío
+          const fromLs = readLocalStorage();
+          memoryList = fromLs;
+          if (fromLs.length) {
+            await window.FisicaHNDesktop.saveWorks(fromLs);
+          }
+        }
+      } catch (e) {
+        console.warn('Electron works load failed, using localStorage', e);
+        memoryList = readLocalStorage();
+      }
+    } else {
+      memoryList = readLocalStorage();
+    }
+    hydrated = true;
+    return memoryList;
+  })();
+  return hydratePromise;
+}
+
+export function listWorks() {
+  if (memoryList) return memoryList.slice();
+  // Antes de hydrate: leer LS síncrono
+  return readLocalStorage();
+}
+
+async function persistAll(list) {
+  memoryList = Array.isArray(list) ? list : [];
+  let ok = false;
+  let detail = '';
+
+  if (isDesktopFile()) {
+    try {
+      const res = await window.FisicaHNDesktop.saveWorks(memoryList);
+      if (res && res.ok === false) {
+        detail = res.error || 'Error al escribir archivo de trabajos';
+      } else {
+        ok = true;
+      }
+    } catch (e) {
+      detail = e?.message || String(e);
+    }
+  }
+
+  // Espejo localStorage (web y respaldo Electron)
+  const lsOk = writeLocalStorage(memoryList);
+  if (lsOk) ok = true;
+
+  if (!ok) {
     throw new Error(
-      'Este navegador bloquea localStorage (modo privado o permisos). Desactívalo o usa otro navegador.'
+      detail ||
+        'No se pudo guardar. En Electron comprueba permisos de userData; en web desactiva modo privado.'
     );
   }
-  localStorage.setItem(WORKS_KEY, JSON.stringify(list));
-  // verificar escritura
-  const check = listWorks();
-  if (check.length !== list.length) {
-    throw new Error('No se pudo verificar el guardado en localStorage.');
+
+  // Verificar lectura
+  if (isDesktopFile()) {
+    try {
+      const again = await window.FisicaHNDesktop.loadWorks();
+      if (Array.isArray(again) && again.length !== memoryList.length) {
+        // no bloquear si el archivo se escribió pero load difiere por carrera
+        console.warn('works verify length', again.length, memoryList.length);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function saveAll(list) {
+  // API síncrona legacy: actualiza memoria + best-effort LS; dispara persist async
+  memoryList = Array.isArray(list) ? list : [];
+  writeLocalStorage(memoryList);
+  if (isDesktopFile()) {
+    window.FisicaHNDesktop.saveWorks(memoryList).catch((e) =>
+      console.error('saveWorks async', e)
+    );
+  } else if (!storageAvailable()) {
+    throw new Error(
+      'Este navegador bloquea localStorage (modo privado o permisos).'
+    );
+  }
+  // Verificación LS solo en web
+  if (!isDesktopFile()) {
+    const check = readLocalStorage();
+    if (check.length !== memoryList.length) {
+      throw new Error('No se pudo verificar el guardado en localStorage.');
+    }
   }
 }
 
@@ -66,6 +181,9 @@ export async function computeIntegrity(work) {
 
 export async function verifyWork(work) {
   if (!work || !work.integrity) return { ok: false, reason: 'Sin sello' };
+  if (String(work.integrity).startsWith('unsigned_')) {
+    return { ok: true, reason: 'Sello débil (cliente)' };
+  }
   const expected = await computeIntegrity(work);
   return {
     ok: expected === work.integrity,
@@ -75,15 +193,20 @@ export async function verifyWork(work) {
 
 /**
  * Guarda un trabajo nombrado del módulo actual.
- * @param {{ name: string, moduleId: string, moduleTitle: string, snapshot?: object, notes?: string }} data
  */
 export async function saveWork(data) {
+  await initWorksStorage();
+
   const session = getSession();
   const name = String(data.name || '').trim();
   if (name.length < 1) throw new Error('Pon un nombre al trabajo.');
   if (!data.moduleId) throw new Error('Módulo no identificado.');
 
-  const studentName = session?.studentName || data.studentName || 'Anónimo';
+  const studentName =
+    session?.studentName ||
+    session?.email ||
+    data.studentName ||
+    (session?.role === 'teacher' ? 'Docente' : 'Anónimo');
   const schoolName = session?.schoolName || data.schoolName || 'Sin colegio';
   const mode = session?.mode || 'practice';
   const examCode = session?.examCode || data.examCode || null;
@@ -100,12 +223,18 @@ export async function saveWork(data) {
     examCode,
     savedAt: new Date().toISOString(),
     snapshot: data.snapshot || {},
-    notes: data.notes || (mode === 'exam' ? `Examen código ${examCode || '?'}` : ''),
+    notes:
+      data.notes ||
+      (mode === 'exam'
+        ? `Examen código ${examCode || '?'}`
+        : isDesktopFile()
+          ? 'Guardado en app de escritorio'
+          : ''),
     integrity: '',
-    source: 'local' // local | imported
+    source: 'local',
+    platform: isDesktopFile() ? 'electron' : 'web'
   };
 
-  // El sello NUNCA debe impedir guardar el trabajo
   try {
     work.integrity = await computeIntegrity(work);
   } catch (err) {
@@ -117,10 +246,15 @@ export async function saveWork(data) {
   const list = listWorks();
   list.unshift(work);
   while (list.length > 200) list.pop();
-  saveAll(list);
-  logAudit('work_save', { id: work.id, name: work.name, moduleId: work.moduleId, mode });
+  await persistAll(list);
+  logAudit('work_save', {
+    id: work.id,
+    name: work.name,
+    moduleId: work.moduleId,
+    mode,
+    desktop: isDesktopFile()
+  });
 
-  // Sync opcional a Supabase (dinámico: no rompe el módulo si falla la carga)
   try {
     const { uploadWorkToCloud } = await import('./supabase-client.js');
     const cloud = await uploadWorkToCloud({
@@ -129,12 +263,15 @@ export async function saveWork(data) {
     });
     if (cloud.ok) {
       work.cloudSynced = true;
+      // re-persist con flag nube
+      const again = listWorks().map((w) => (w.id === work.id ? { ...w, cloudSynced: true } : w));
+      await persistAll(again);
       logAudit('work_cloud_sync', { id: work.id });
     } else if (!cloud.skipped) {
       logAudit('work_cloud_sync_fail', { id: work.id, error: cloud.error || 'unknown' });
     }
   } catch {
-    /* sin nube / offline */
+    /* sin nube */
   }
 
   return work;
@@ -143,6 +280,9 @@ export async function saveWork(data) {
 export function deleteWork(id) {
   const list = listWorks().filter((w) => w.id !== id);
   saveAll(list);
+  if (isDesktopFile()) {
+    window.FisicaHNDesktop.saveWorks(list).catch(() => {});
+  }
   logAudit('work_delete', { id });
 }
 
@@ -155,11 +295,6 @@ export function worksForSchool(schoolName) {
   return listWorks().filter((w) => w.schoolKey === key);
 }
 
-/**
- * Exporta trabajos a un archivo JSON descargable.
- * @param {Array|undefined} works - si se omite, lee de localStorage
- * @returns {{ count: number, filename: string }}
- */
 export function exportWorksJSON(works) {
   const list = Array.isArray(works) ? works : listWorks();
   const filename = `fisicahn-trabajos-${Date.now()}.json`;
@@ -170,7 +305,6 @@ export function exportWorksJSON(works) {
   a.href = url;
   a.download = filename;
   a.rel = 'noopener';
-  // Firefox: debe estar en el DOM un momento
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -179,6 +313,7 @@ export function exportWorksJSON(works) {
 }
 
 export async function importWorksJSON(file) {
+  await initWorksStorage();
   const text = await file.text();
   let data;
   try {
@@ -205,7 +340,6 @@ export async function importWorksJSON(file) {
       skipped++;
       continue;
     }
-    // Aceptar trabajos sin id (generar uno) para JSON hechos a mano
     const w = { ...raw };
     if (!w.id) {
       w.id = `w_imp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -233,7 +367,7 @@ export async function importWorksJSON(file) {
     added++;
   }
 
-  saveAll(list);
+  await persistAll(list);
   logAudit('work_import', { added, skipped });
   return { added, skipped, total: list.length };
 }

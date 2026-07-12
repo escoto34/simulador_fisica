@@ -234,11 +234,23 @@ export function ensureSessionGate(opts = {}) {
       } catch {
         /* ignore */
       }
-      return startTeacherSessionVerified({
+      const session = await startTeacherSessionVerified({
         email: cloud.email || email,
         schoolName: school,
         userId: cloud.user?.id || null
       });
+      // Perfil en nube para RLS (school_key del docente)
+      try {
+        const { upsertTeacherProfile } = await import('./supabase-client.js');
+        await upsertTeacherProfile({
+          email: session.email,
+          schoolName: session.schoolName,
+          schoolKey: session.schoolKey
+        });
+      } catch {
+        /* offline / sin tabla */
+      }
+      return session;
     };
 
     overlay.querySelector('#gateEnter').addEventListener('click', async () => {

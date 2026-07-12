@@ -89,6 +89,33 @@ export function setTool(toolId) {
   if (toolId === 'unbounded') setUnbounded(!unbounded);
 }
 
+export function getState() {
+  return {
+    pos: { x: pos.x, y: pos.y },
+    vel: { x: vel.x, y: vel.y },
+    accel: { x: accel.x, y: accel.y },
+    force: { x: force.x, y: force.y },
+    unbounded,
+    params: { ...params }
+  };
+}
+
+export function setState(s) {
+  if (!s || typeof s !== 'object') return;
+  if (s.params) {
+    if (s.params.mass != null) params.mass = s.params.mass;
+    if (s.params.fx != null) params.fx = s.params.fx;
+    if (s.params.fy != null) params.fy = s.params.fy;
+  }
+  applyForce();
+  if (s.pos) pos = new Vector2D(s.pos.x, s.pos.y);
+  if (s.vel) vel = new Vector2D(s.vel.x, s.vel.y);
+  if (typeof s.unbounded === 'boolean') setUnbounded(s.unbounded);
+  trail = [];
+  renderParams();
+  updateData();
+}
+
 export function setUnbounded(on) {
   unbounded = !!on;
   if (_renderer) {
@@ -169,17 +196,24 @@ export function render(ctx, alpha, elapsed) {
     label: `m = ${params.mass} kg`
   });
 
+  // Fuerza y velocidad: etiquetas en lados opuestos del vector para no solaparse
   if (force.magnitude() > 0.01) {
     r.drawVector(pos.x, pos.y, force.x * 0.15, force.y * 0.15, {
       color: '#ef5350',
-      label: `F = ${roundTo(force.magnitude(), 1)} N`
+      width: 2.5,
+      label: `F = ${roundTo(force.magnitude(), 1)} N`,
+      labelSide: 1,
+      labelPad: 16
     });
   }
 
   if (vel.magnitude() > 0.01) {
     r.drawVector(pos.x, pos.y, vel.x * 0.2, vel.y * 0.2, {
       color: '#66bb6a',
-      label: `v = ${roundTo(vel.magnitude(), 2)} m/s`
+      width: 2.5,
+      label: `v = ${roundTo(vel.magnitude(), 2)} m/s`,
+      labelSide: -1,
+      labelPad: 16
     });
   }
 

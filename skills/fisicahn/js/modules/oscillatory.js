@@ -127,3 +127,13 @@ function renderParams() {
     bind('o_p', 'phi', 'od_p');
   }, 0);
 }
+
+export function getState() {
+  return { t, params: { ...params } };
+}
+export function setState(s) {
+  if (!s || typeof s !== 'object') return;
+  if (s.params) Object.assign(params, s.params);
+  if (s.t != null) t = s.t;
+  renderParams();
+}

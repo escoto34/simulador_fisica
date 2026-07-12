@@ -99,6 +99,34 @@ export function signOutCloud() {
   setCloudSession(null);
 }
 
+/** Upsert perfil docente (school_key) para RLS de trabajos/exámenes. */
+export async function upsertTeacherProfile(profile) {
+  if (!configured()) return { ok: false, skipped: true };
+  const sess = getCloudSession();
+  if (!sess?.access_token || !sess?.user?.id) return { ok: false, error: 'Sin sesión' };
+  const schoolKey = String(profile.schoolKey || '').trim();
+  if (schoolKey.length < 2) return { ok: false, error: 'school_key inválido' };
+  const res = await fetch(`${cfg.url}/rest/v1/teacher_profiles`, {
+    method: 'POST',
+    headers: headers(
+      { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      sess.access_token
+    ),
+    body: JSON.stringify({
+      id: sess.user.id,
+      email: profile.email || sess.email || null,
+      school_name: profile.schoolName || null,
+      school_key: schoolKey,
+      updated_at: new Date().toISOString()
+    })
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    return { ok: false, error: t || `HTTP ${res.status}` };
+  }
+  return { ok: true };
+}
+
 export async function pushExam({ schoolKey, schoolName, code }) {
   if (!configured()) return { ok: false, skipped: true };
   const sess = getCloudSession();

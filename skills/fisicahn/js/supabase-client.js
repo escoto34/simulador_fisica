@@ -358,6 +358,48 @@ export async function signUpTeacher(email, password, schoolName) {
   return data;
 }
 
+/**
+ * Upsert del perfil docente (necesario para RLS por school_key).
+ * @param {{ schoolName: string, schoolKey: string, email?: string }} profile
+ */
+export async function upsertTeacherProfile(profile) {
+  const cfg = await loadSupabaseConfig();
+  if (!isConfigured(cfg)) return { ok: false, skipped: true };
+  const sess = getCloudSession();
+  if (!sess?.access_token || !sess?.user?.id) {
+    return { ok: false, error: 'Sin sesión' };
+  }
+  const schoolKey = String(profile.schoolKey || '').trim();
+  const schoolName = String(profile.schoolName || '').trim();
+  if (schoolKey.length < 2) return { ok: false, error: 'school_key inválido' };
+
+  const row = {
+    id: sess.user.id,
+    email: profile.email || sess.email || null,
+    school_name: schoolName,
+    school_key: schoolKey,
+    updated_at: new Date().toISOString()
+  };
+
+  try {
+    const res = await fetch(`${cfg.url}/rest/v1/teacher_profiles`, {
+      method: 'POST',
+      headers: {
+        ...(await authHeaders(sess.access_token)),
+        Prefer: 'resolution=merge-duplicates,return=minimal'
+      },
+      body: JSON.stringify(row)
+    });
+    if (!res.ok) {
+      const t = await res.text().catch(() => '');
+      return { ok: false, error: t || `HTTP ${res.status}` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message || String(e) };
+  }
+}
+
 /** Publica un código de examen activo (requiere token de docente). */
 export async function pushExam({ schoolKey, schoolName, code }) {
   const cfg = await loadSupabaseConfig();

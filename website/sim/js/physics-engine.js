@@ -16,7 +16,10 @@ export class PhysicsEngine {
    */
   constructor(canvas) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
+    // alpha:false + desynchronized mejora rendimiento en muchos GPUs
+    this.ctx =
+      canvas.getContext('2d', { alpha: false, desynchronized: true }) ||
+      canvas.getContext('2d');
 
     this._running = false;
     this._paused = false;
@@ -24,10 +27,15 @@ export class PhysicsEngine {
     this._accumulator = 0;
     this._lastTime = 0;
     this._frameId = null;
+    this._maxSubsteps = 5;
 
     this._fps = 0;
     this._fpsFrames = 0;
     this._fpsTime = 0;
+    this._dpr = 1;
+    this._resizeObs = null;
+
+    this._bindResize();
 
     /**
      * Callback: onUpdate(dt) — llamado en cada tick de física.
@@ -71,6 +79,57 @@ export class PhysicsEngine {
       cancelAnimationFrame(this._frameId);
       this._frameId = null;
     }
+    if (this._resizeObs) {
+      try {
+        this._resizeObs.disconnect();
+      } catch {
+        /* ignore */
+      }
+      this._resizeObs = null;
+    }
+  }
+
+  /** Ajusta buffer del canvas al tamaño CSS × devicePixelRatio (nítido y barato). */
+  _bindResize() {
+    const apply = () => {
+      const canvas = this.canvas;
+      if (!canvas) return;
+      const parent = canvas.parentElement;
+      const cssW = Math.max(1, Math.floor(parent?.clientWidth || canvas.clientWidth || 800));
+      const cssH = Math.max(
+        1,
+        Math.floor(
+          (parent?.clientHeight || canvas.clientHeight || 600) -
+            (parent?.querySelector?.('.canvas-header')?.offsetHeight || 0) -
+            (parent?.querySelector?.('.canvas-footer')?.offsetHeight || 0) -
+            24
+        )
+      );
+      // En layout flex el canvas ya tiene altura; preferir client rect real
+      const rect = canvas.getBoundingClientRect();
+      const w = Math.max(1, Math.floor(rect.width || cssW));
+      const h = Math.max(1, Math.floor(rect.height || cssH));
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      this._dpr = dpr;
+      const bw = Math.floor(w * dpr);
+      const bh = Math.floor(h * dpr);
+      if (canvas.width !== bw || canvas.height !== bh) {
+        canvas.width = bw;
+        canvas.height = bh;
+        if (this.ctx) {
+          this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+      }
+    };
+    apply();
+    if (typeof ResizeObserver !== 'undefined') {
+      this._resizeObs = new ResizeObserver(() => apply());
+      this._resizeObs.observe(this.canvas);
+      if (this.canvas.parentElement) this._resizeObs.observe(this.canvas.parentElement);
+    } else {
+      window.addEventListener('resize', apply);
+    }
+    this.resizeCanvas = apply;
   }
 
   /**
@@ -165,10 +224,16 @@ export class PhysicsEngine {
 
     this._accumulator += frameTime * this._speed;
 
-    while (this._accumulator >= DEFAULT_DT) {
+    // Limitar substeps: evita cascadas de física en pestañas en segundo plano
+    let steps = 0;
+    while (this._accumulator >= DEFAULT_DT && steps < this._maxSubsteps) {
       if (this.onUpdate) this.onUpdate(DEFAULT_DT);
       this._accumulator -= DEFAULT_DT;
       this._elapsed += DEFAULT_DT;
+      steps++;
+    }
+    if (this._accumulator >= DEFAULT_DT) {
+      this._accumulator = 0;
     }
 
     if (this.onRender) this.onRender(this.ctx, this._accumulator / DEFAULT_DT, this._elapsed);

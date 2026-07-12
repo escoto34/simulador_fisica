@@ -57,6 +57,50 @@ body.view-sim {
     "sidebar bottom right";
 }
 
+/* Drag-to-resize de columnas / panel inferior */
+.panel-resize-handle {
+  position: fixed;
+  z-index: 50;
+  display: none;
+  background: transparent;
+  touch-action: none;
+}
+body.view-sim .panel-resize-handle {
+  display: block;
+}
+.panel-resize-left {
+  top: 0;
+  bottom: 0;
+  left: calc(var(--sidebar-width) - 3px);
+  width: 6px;
+  cursor: col-resize;
+}
+.panel-resize-right {
+  top: 0;
+  bottom: 0;
+  right: calc(var(--right-panel-width) - 3px);
+  width: 6px;
+  cursor: col-resize;
+}
+.panel-resize-bottom {
+  left: var(--sidebar-width);
+  right: var(--right-panel-width);
+  bottom: calc(var(--bottom-panel-height) - 3px);
+  height: 6px;
+  cursor: row-resize;
+}
+.panel-resize-handle:hover,
+body.is-resizing-panels .panel-resize-handle {
+  background: rgba(79, 195, 247, 0.35);
+}
+body.is-resizing-panels {
+  user-select: none;
+  cursor: col-resize;
+}
+body.is-resizing-panels .panel-resize-bottom {
+  cursor: row-resize;
+}
+
 /* Cuando simShell usa display:contents, sus hijos entran al grid del body */
 body.view-sim .sim-shell {
   display: contents;

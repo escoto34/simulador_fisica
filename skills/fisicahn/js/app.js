@@ -7,7 +7,7 @@ import { PhysicsEngine } from './physics-engine.js';
 import { Renderer } from './renderer.js';
 import { CATALOG, getById, getUnifiedCatalog, getSimulationCatalog, WORKS_MODULE } from './catalog.js';
 import { getSession, logAudit } from './auth.js';
-import { saveWork, listWorks } from './works.js';
+import { saveWork, listWorks, getWork, initWorksStorage } from './works.js';
 import {
   bindWorksPanelControls,
   renderWorksSidebar,
@@ -17,6 +17,7 @@ import {
 import { ensureSessionGate, renderSessionBadge, renderUserChip } from './session-gate.js';
 import { bindUserMenu } from './user-menu.js';
 import { initNetworkStatusUI } from './network-status.js';
+import { initPanelResize } from './panel-resize.js';
 
 /* ============================================
    Estado
@@ -44,6 +45,8 @@ const ENGINE_PATHS = {
   sound: './modules/sound.js',
   magnetic: './modules/magnetic.js',
   gravity: './modules/gravity.js',
+  atomic: './modules/atomic.js',
+  particles: './modules/particles.js',
   placeholder: './modules/placeholder.js'
 };
 
@@ -58,6 +61,8 @@ const ENGINE_TITLES = {
   sound: 'Sonido',
   magnetic: 'Campos magnéticos',
   gravity: 'Gravedad',
+  atomic: 'Física atómica',
+  particles: 'Física de partículas',
   placeholder: 'Próximamente'
 };
 
@@ -824,21 +829,40 @@ function drawMeasureOverlays(ctx) {
    Init
    ============================================ */
 
+function collectUiParams() {
+  const out = {};
+  document.querySelectorAll('#paramsPanel input[type="range"], #paramsPanel input.param-number').forEach((el) => {
+    const id = (el.id || '').replace(/^(param_|num_)/, '');
+    if (!id) return;
+    const v = parseFloat(el.value);
+    if (Number.isFinite(v)) out[id] = v;
+  });
+  document.querySelectorAll('#paramsPanel input[type="checkbox"]').forEach((el) => {
+    const id = (el.id || '').replace(/^param_/, '');
+    if (id) out[id] = el.checked;
+  });
+  return out;
+}
+
 function collectModuleSnapshot() {
   const inst = state.moduleInstances[state.currentModule];
   const snap = {
     catalogId: state.catalogId,
     engineKey: state.currentModule,
     simTime: engine?._elapsed ?? 0,
-    paused: engine?.isPaused?.() ?? false
+    paused: engine?.isPaused?.() ?? false,
+    speed: engine?.getSpeed?.() ?? 1,
+    tools: {
+      tool: measureState.tool
+    },
+    uiParams: collectUiParams()
   };
   if (inst && typeof inst.getState === 'function') {
     try {
       const s = inst.getState();
-      // serializable shallow
-      snap.moduleState = JSON.parse(JSON.stringify(s, (_k, v) =>
-        typeof v === 'number' && !Number.isFinite(v) ? null : v
-      ));
+      snap.moduleState = JSON.parse(
+        JSON.stringify(s, (_k, v) => (typeof v === 'number' && !Number.isFinite(v) ? null : v))
+      );
     } catch {
       snap.moduleState = null;
     }
@@ -846,17 +870,88 @@ function collectModuleSnapshot() {
   return snap;
 }
 
+/** Modal HTML (prompt falla o no existe en Electron). */
+function askWorkName(defaultName) {
+  return new Promise((resolve) => {
+    const prev = document.getElementById('saveWorkModal');
+    if (prev) prev.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'saveWorkModal';
+    overlay.className = 'session-gate';
+    overlay.innerHTML = `
+      <div class="session-gate-card" role="dialog" aria-labelledby="saveWorkTitle">
+        <h2 id="saveWorkTitle">Guardar trabajo</h2>
+        <p class="session-gate-lead">Se guardará el módulo, parámetros y herramientas actuales en la caché de este equipo${
+          window.FisicaHNDesktop?.isDesktop ? ' (app de escritorio)' : ''
+        }.</p>
+        <label class="gate-label">Nombre del trabajo
+          <input type="text" id="saveWorkName" maxlength="120" value="">
+        </label>
+        <p class="gate-error" id="saveWorkErr" hidden></p>
+        <div class="gate-actions">
+          <button type="button" class="gate-btn primary" id="saveWorkOk">Guardar</button>
+          <button type="button" class="gate-btn secondary" id="saveWorkCancel">Cancelar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector('#saveWorkName');
+    if (input) input.value = defaultName;
+    input?.focus();
+    input?.select();
+    const finish = (val) => {
+      overlay.remove();
+      resolve(val);
+    };
+    overlay.querySelector('#saveWorkCancel')?.addEventListener('click', () => finish(null));
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) finish(null);
+    });
+    const submit = () => {
+      const name = String(input?.value || '').trim();
+      const err = overlay.querySelector('#saveWorkErr');
+      if (!name) {
+        if (err) {
+          err.textContent = 'Escribe un nombre.';
+          err.hidden = false;
+        }
+        return;
+      }
+      finish(name);
+    };
+    overlay.querySelector('#saveWorkOk')?.addEventListener('click', submit);
+    input?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submit();
+      }
+    });
+  });
+}
+
 async function handleSaveWork() {
-  const session = getSession();
-  if (!session || session.role === 'teacher') {
-    // allow teacher to save as demo with prompt name
+  let session = getSession();
+  if (!session) {
+    try {
+      await ensureSessionGate();
+    } catch {
+      /* ignore */
+    }
+    session = getSession();
+    if (!session) {
+      alert('Inicia sesión (Alumno o Docente) para guardar en este equipo.');
+      return;
+    }
   }
+
+  await initWorksStorage();
+
   const defaultName = `${state.catalogId || state.currentModule || 'modulo'}-${new Date()
     .toISOString()
     .slice(0, 16)
     .replace('T', ' ')}`;
-  const name = prompt('Nombre del trabajo a guardar:', defaultName);
+  const name = await askWorkName(defaultName);
   if (name == null) return;
+
   try {
     const entry = getById(state.catalogId);
     const work = await saveWork({
@@ -864,22 +959,114 @@ async function handleSaveWork() {
       moduleId: state.catalogId || state.currentModule || 'unknown',
       moduleTitle: entry?.title || moduleTitle?.textContent || state.currentModule,
       snapshot: collectModuleSnapshot(),
-      notes: session?.mode === 'exam' ? 'Modo examen' : ''
+      notes:
+        getSession()?.mode === 'exam'
+          ? 'Modo examen'
+          : window.FisicaHNDesktop?.isDesktop
+            ? 'Guardado en app de escritorio'
+            : ''
     });
     refreshWorksList();
     const total = listWorks().length;
-    const cloudNote = work.cloudSynced ? '\nTambién se envió a la nube (Supabase).' : '';
-    const weakNote = work.integrityWeak ? '\n(Aviso: sello de integridad débil en este navegador.)' : '';
+    const where = window.FisicaHNDesktop?.isDesktop
+      ? 'archivo de la app (userData) + caché local'
+      : 'caché local de este navegador';
+    const cloudNote = work.cloudSynced ? '\nTambién se envió a la nube.' : '';
+    const weakNote = work.integrityWeak ? '\n(Aviso: sello de integridad débil.)' : '';
     alert(
       `Trabajo guardado: “${work.name}”\n` +
-        `Total en este navegador: ${total}\n` +
-        `Queda en la caché local.${weakNote}${cloudNote}`
+        `Total: ${total}\n` +
+        `Queda en ${where}.${weakNote}${cloudNote}\n\n` +
+        `Ábrelo desde Mis trabajos → Abrir en módulo.`
     );
   } catch (e) {
     console.error('Guardar trabajo:', e);
     alert(e?.message || String(e) || 'No se pudo guardar.');
   }
 }
+
+/**
+ * Abre un trabajo guardado: carga el módulo y restaura parámetros / estado.
+ * @param {string} workId
+ */
+export async function openWorkInModule(workId) {
+  await initWorksStorage();
+  const w = getWork(workId);
+  if (!w) {
+    alert('Trabajo no encontrado en la caché.');
+    return;
+  }
+  const catalogId = w.snapshot?.catalogId || w.moduleId;
+  const entry = getById(catalogId);
+  if (!entry || entry.special === 'works') {
+    alert(`No se puede abrir el módulo “${catalogId || '?'}”.`);
+    return;
+  }
+
+  // Cerrar modal de trabajos
+  const modal = document.getElementById('worksModal');
+  if (modal) {
+    modal.hidden = true;
+    document.body.classList.remove('works-modal-open');
+  }
+
+  await openCatalogModule(catalogId);
+
+  // Esperar un frame a que el módulo pinte params
+  await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 50)));
+
+  const inst = state.moduleInstances[state.currentModule];
+  const snap = w.snapshot || {};
+
+  if (inst && typeof inst.setState === 'function' && snap.moduleState) {
+    try {
+      inst.setState(snap.moduleState);
+    } catch (e) {
+      console.warn('setState módulo', e);
+    }
+  } else if (snap.uiParams && typeof snap.uiParams === 'object') {
+    // Fallback: aplicar sliders del panel
+    for (const [id, val] of Object.entries(snap.uiParams)) {
+      const range = document.getElementById(`param_${id}`);
+      const num = document.getElementById(`num_${id}`);
+      if (range && typeof val === 'number') {
+        range.value = String(val);
+        range.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      if (num && typeof val === 'number') {
+        num.value = String(val);
+        num.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      if (typeof val === 'boolean') {
+        const cb = document.getElementById(`param_${id}`);
+        if (cb && cb.type === 'checkbox') {
+          cb.checked = val;
+          cb.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }
+    }
+  }
+
+  if (snap.tools?.tool) {
+    measureState.tool = snap.tools.tool;
+    document.querySelectorAll('.tool-btn').forEach((b) => {
+      b.classList.toggle('active', b.dataset.tool === snap.tools.tool);
+    });
+  }
+  if (typeof snap.speed === 'number' && speedSlider) {
+    speedSlider.value = String(snap.speed);
+    speedSlider.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  if (snap.paused && engine && !engine.isPaused()) {
+    engine.pause(true);
+    updatePlayPauseUI();
+  }
+
+  logAudit('work_open', { id: w.id, moduleId: catalogId });
+}
+
+// API global para el panel de trabajos
+window.FisicaHNOpenWork = openWorkInModule;
 
 function refreshWorksList() {
   // Lista de trabajos solo en el hub / barra lateral, no en panel derecho
@@ -918,6 +1105,12 @@ async function init() {
   }
 
   try {
+    await initWorksStorage();
+  } catch (e) {
+    console.warn('Works storage:', e);
+  }
+
+  try {
     await ensureSessionGate();
   } catch (e) {
     console.warn('Session gate:', e);
@@ -928,6 +1121,20 @@ async function init() {
     console.warn('User menu:', e);
     renderSessionBadge(document.getElementById('sessionBadgeHost'));
     renderUserChip(document.getElementById('userChipHost'));
+  }
+
+  try {
+    initPanelResize({
+      onResize: () => {
+        try {
+          engine?.resizeCanvas?.();
+        } catch {
+          /* ignore */
+        }
+      }
+    });
+  } catch (e) {
+    console.warn('Panel resize:', e);
   }
   logAudit('app_start', {
     modules: CATALOG.length,

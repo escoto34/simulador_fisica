@@ -16,10 +16,10 @@ graphify-out/
 
 # Config en línea con keys reales (usa supabase-config.example.js en el repo)
 website/js/supabase-config.js
-# Copia generada por build-website.sh / sync (ZIP y sim servido)
+# Copias generadas por build / sync (ZIP, lab servido, desktop)
 website/sim/js/supabase-config.js
-# Por si se copia config dentro de la fuente del lab
 skills/fisicahn/js/supabase-config.js
+desktop/app/js/supabase-config.js
 
 # --- Desktop (Electron) ---
 desktop/node_modules/
@@ -27,6 +27,7 @@ desktop/app/
 desktop/release/
 desktop/dist/
 desktop/*.log
+desktop/out/
 
 # --- OS / editor ---
 .DS_Store
@@ -45,6 +46,7 @@ Desktop.ini
 *.bak
 *.orig
 website/js/*.tmp
+*.swp
 
 # --- Logs y cobertura ---
 *.log
@@ -52,9 +54,10 @@ npm-debug.log*
 yarn-error.log*
 coverage/
 
-# --- Skills / packs ajenos al producto (no se despliegan; no son el lab) ---
+# --- Skills / packs ajenos al producto (no se despliegan) ---
 # skills/fisicahn/ SÍ se versiona (fuente del simulador).
 skills/layers-skills/
 skills/taste-skill/
 skills/ui-ux-pro-max-skill/
 skills/ponytail/
+implementation_plan.md

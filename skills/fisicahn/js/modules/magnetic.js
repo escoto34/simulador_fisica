@@ -177,3 +177,21 @@ function renderParams() {
     bind('m_v', 'v0', 'md_v');
   }, 0);
 }
+
+export function getState() {
+  return {
+    pos: pos ? { x: pos.x, y: pos.y } : null,
+    vel: vel ? { x: vel.x, y: vel.y } : null,
+    unbounded,
+    params: { ...params }
+  };
+}
+export function setState(s) {
+  if (!s || typeof s !== 'object') return;
+  if (s.params) Object.assign(params, s.params);
+  if (s.pos) pos = new Vector2D(s.pos.x, s.pos.y);
+  if (s.vel) vel = new Vector2D(s.vel.x, s.vel.y);
+  if (typeof s.unbounded === 'boolean') setUnbounded(s.unbounded);
+  trail = [];
+  renderParams();
+}

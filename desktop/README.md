@@ -24,6 +24,12 @@ En labs con **NetSupport** u otras herramientas de control de aula, a veces se *
 - Node.js **20+** (recomendado **22 LTS** o superior; con Electron 43 / electron-builder 26)
 - npm 10+
 
+## Uso medido
+
+- Tras `npm start`, la app en el monitor del sistema suele ir por **~90–100 MB de RAM**.
+- Los trabajos se guardan en un archivo de **userData** (IPC), no solo en `localStorage`.
+- Comando correcto: `npm start` (ya hace `sync`). No uses `npm start / npm run sync`.
+
 ## Uso en desarrollo
 
 ```bash

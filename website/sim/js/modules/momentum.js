@@ -224,3 +224,18 @@ function renderParams() {
     bind('p_e', 'e', 'd_e');
   }, 0);
 }
+
+export function getState() {
+  return { x1, x2, v1, v2, collided, t, params: { ...params } };
+}
+export function setState(s) {
+  if (!s || typeof s !== 'object') return;
+  if (s.params) Object.assign(params, s.params);
+  if (s.x1 != null) x1 = s.x1;
+  if (s.x2 != null) x2 = s.x2;
+  if (s.v1 != null) v1 = s.v1;
+  if (s.v2 != null) v2 = s.v2;
+  if (typeof s.collided === 'boolean') collided = s.collided;
+  if (s.t != null) t = s.t;
+  renderParams();
+}

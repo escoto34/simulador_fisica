@@ -122,7 +122,31 @@ export function getUnbounded() {
 }
 
 export function getState() {
-  return { pos, vel, accel, unbounded, params: { ...params } };
+  return {
+    pos: { x: pos.x, y: pos.y },
+    vel: { x: vel.x, y: vel.y },
+    accel: { x: accel.x, y: accel.y },
+    unbounded,
+    params: { ...params }
+  };
+}
+
+export function setState(s) {
+  if (!s || typeof s !== 'object') return;
+  if (s.params) Object.assign(params, s.params);
+  if (s.pos) pos = new Vector2D(s.pos.x, s.pos.y);
+  if (s.vel) vel = new Vector2D(s.vel.x, s.vel.y);
+  if (s.accel) accel = new Vector2D(s.accel.x, s.accel.y);
+  if (typeof s.unbounded === 'boolean') setUnbounded(s.unbounded);
+  trail = [];
+  tSamples = [];
+  if (typeof renderParams === 'function') {
+    try {
+      renderParams();
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 export function update(dt) {

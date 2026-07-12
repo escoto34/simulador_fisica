@@ -136,3 +136,12 @@ function renderParams() {
     bind('s_vs', 'vSource', 'sd_vs');
   }, 0);
 }
+
+export function getState() {
+  return { params: { ...params } };
+}
+export function setState(s) {
+  if (!s?.params) return;
+  Object.assign(params, s.params);
+  renderParams();
+}

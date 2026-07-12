@@ -177,18 +177,18 @@ export const CATALOG = [
     title: 'Física atómica',
     titleEn: 'Atomic Physics',
     level: 'advanced',
-    blurb: 'Introducción conceptual (en desarrollo).',
-    engineKey: null,
-    status: 'soon'
+    blurb: 'Modelo de Bohr: niveles, órbitas y fotones en saltos de energía.',
+    engineKey: 'atomic',
+    status: 'ready'
   },
   {
     id: 'particle-physics',
     title: 'Física de partículas',
     titleEn: 'Particle Physics',
     level: 'advanced',
-    blurb: 'Introducción conceptual (en desarrollo).',
-    engineKey: null,
-    status: 'soon'
+    blurb: 'Cargas en campo B: curvatura, r = mv/|q|B y especies (e⁻, p⁺, α…).',
+    engineKey: 'particles',
+    status: 'ready'
   },
   {
     id: 'wave-optics',

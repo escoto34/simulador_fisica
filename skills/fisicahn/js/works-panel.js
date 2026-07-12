@@ -170,11 +170,13 @@ export function renderWorksList2(host, opts = {}) {
             w.notes ? ` — ${escapeHtml(String(w.notes).slice(0, 80))}` : ''
           }</p>
           <div class="works-list2-actions">
+            <button type="button" class="works-list2-btn primary" data-open="${escapeHtml(w.id)}" title="Abrir en el módulo con parámetros guardados">
+              Abrir en módulo
+            </button>
             ${
               evaluate
-                ? `<button type="button" class="works-list2-btn primary" data-eval="${escapeHtml(w.id)}">
-              Ver
-              <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                ? `<button type="button" class="works-list2-btn" data-eval="${escapeHtml(w.id)}">
+              Detalles
             </button>`
                 : ''
             }
@@ -186,6 +188,16 @@ export function renderWorksList2(host, opts = {}) {
         .join('')}
     </div>`;
 
+  host.querySelectorAll('[data-open]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.open;
+      if (typeof window.FisicaHNOpenWork === 'function') {
+        window.FisicaHNOpenWork(id);
+      } else {
+        alert('No se pudo abrir el módulo. Recarga la app.');
+      }
+    });
+  });
   host.querySelectorAll('[data-eval]').forEach((btn) => {
     btn.addEventListener('click', () => showWorkEvaluation(btn.dataset.eval));
   });

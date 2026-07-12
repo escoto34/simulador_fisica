@@ -67,8 +67,24 @@ echo "→ Generando downloads/fisicahn.zip"
 rm -f "$DL/fisicahn.zip"
 (
   cd "$DEST"
-  zip -r -q "downloads/fisicahn.zip" sim \
-    -x "*.DS_Store" -x "**/.git/**"
+  if command -v zip >/dev/null 2>&1; then
+    zip -r -q "downloads/fisicahn.zip" sim \
+      -x "*.DS_Store" -x "**/.git/**"
+  else
+    python3 - <<'PY'
+import os, zipfile
+out = "downloads/fisicahn.zip"
+os.makedirs("downloads", exist_ok=True)
+with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+    for dp, _, fns in os.walk("sim"):
+        for f in fns:
+            if f == ".DS_Store":
+                continue
+            p = os.path.join(dp, f)
+            z.write(p)
+print("  (python zip)", os.path.getsize(out), "bytes")
+PY
+  fi
 )
 
 echo "→ Listo para GitHub Pages / Cloudflare Pages"

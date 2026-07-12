@@ -1,10 +1,22 @@
 {
   "name": "fisicahn-desktop",
   "productName": "FísicaHN",
+  "desktopName": "FisicaHN.desktop",
   "version": "1.1.0",
   "description": "Simulador de física multiplataforma para laboratorios escolares (funciona aunque NetSupport bloquee el navegador).",
   "main": "main.js",
-  "author": "FísicaHN",
+  "homepage": "https://github.com/escoto34/FisicaHN",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/escoto34/FisicaHN.git"
+  },
+  "bugs": {
+    "url": "https://github.com/escoto34/FisicaHN/issues"
+  },
+  "author": {
+    "name": "FísicaHN",
+    "email": "fisicahn@users.noreply.github.com"
+  },
   "license": "MIT",
   "scripts": {
     "sync": "bash scripts/sync-app.sh",
@@ -13,6 +25,7 @@
     "dist": "npm run sync && electron-builder",
     "dist:win": "npm run sync && electron-builder --win portable nsis",
     "dist:linux": "npm run sync && electron-builder --linux AppImage deb",
+    "dist:linux:appimage": "npm run sync && electron-builder --linux AppImage",
     "dist:mac": "npm run sync && electron-builder --mac dmg"
   },
   "devDependencies": {
@@ -22,11 +35,12 @@
   "build": {
     "appId": "hn.fisica.simulador",
     "productName": "FisicaHN",
-    "copyright": "MIT",
+    "copyright": "Copyright © FísicaHN",
     "directories": {
       "output": "release",
       "buildResources": "build"
     },
+    "icon": "build/icon.png",
     "files": [
       "main.js",
       "preload.js",
@@ -42,7 +56,17 @@
         "deb"
       ],
       "category": "Education",
-      "synopsis": "Simulador de física offline para colegios"
+      "synopsis": "Simulador de física offline para colegios",
+      "maintainer": "FísicaHN <fisicahn@users.noreply.github.com>",
+      "vendor": "FísicaHN",
+      "syncDesktopName": true,
+      "desktop": {
+        "entry": {
+          "Name": "FísicaHN",
+          "Comment": "Simulador de física offline para colegios",
+          "Categories": "Education;Science;"
+        }
+      }
     },
     "win": {
       "target": [
@@ -72,7 +96,8 @@
       "target": [
         "dmg"
       ],
-      "category": "public.app-category.education"
+      "category": "public.app-category.education",
+      "identity": null
     }
   },
   "allowScripts": {

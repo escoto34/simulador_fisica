@@ -32,8 +32,25 @@ export class Renderer {
     this._overlays = [];
   }
 
+  /** Tamaño lógico CSS (tras HiDPI el buffer puede ser mayor). */
+  cssSize() {
+    const c = this.canvas;
+    return {
+      w: c.clientWidth || c.width || 800,
+      h: c.clientHeight || c.height || 600
+    };
+  }
+
   clear() {
+    const { w, h } = this.cssSize();
+    // Con setTransform(dpr) clear en px CSS; sin él, buffer completo
+    this.ctx.save();
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.restore();
+    // Relleno fondo opaco (ctx alpha:false)
+    this.ctx.fillStyle = '#0f0f1a';
+    this.ctx.fillRect(0, 0, w, h);
   }
 
   setCamera(x, y) {
@@ -65,8 +82,7 @@ export class Renderer {
   }
 
   worldToCanvas(wx, wy) {
-    const w = this.canvas.width;
-    const h = this.canvas.height;
+    const { w, h } = this.cssSize();
     const scaleX = w / this.worldWidth;
     const scaleY = h / this.worldHeight;
     const cx = w / 2;
@@ -78,8 +94,7 @@ export class Renderer {
   }
 
   canvasToWorld(px, py) {
-    const w = this.canvas.width;
-    const h = this.canvas.height;
+    const { w, h } = this.cssSize();
     const scaleX = w / this.worldWidth;
     const scaleY = h / this.worldHeight;
     const cx = w / 2;
@@ -100,8 +115,7 @@ export class Renderer {
     const axisColor = opts.axisColor || 'rgba(255,255,255,0.28)';
     const spacing = opts.spacing || 1;
 
-    const w = this.canvas.width;
-    const h = this.canvas.height;
+    const { w, h } = this.cssSize();
     const bounds = this.getViewBounds();
 
     ctx.save();
@@ -209,39 +223,66 @@ export class Renderer {
     const color = opts.color || '#4fc3f7';
     const label = opts.label || '';
     const rotation = opts.rotation || 0;
+    const glow = opts.glow !== false;
 
     const p = this.worldToCanvas(wx, wy);
-    const radiusPx = size * (this.canvas.width / this.worldWidth);
+    const { w: cssW } = this.cssSize();
+    const radiusPx = Math.max(size * (cssW / this.worldWidth), 4);
 
     ctx.save();
     ctx.translate(p.x, p.y);
     ctx.rotate(-rotation);
 
-    ctx.fillStyle = color;
-    ctx.globalAlpha = 0.85;
-
     switch (shape) {
       case 'circle': {
+        if (glow) {
+          ctx.shadowColor = color;
+          ctx.shadowBlur = Math.min(18, radiusPx * 0.9);
+        }
+        // Esfera con gradiente (highlight)
+        const g = ctx.createRadialGradient(
+          -radiusPx * 0.35,
+          -radiusPx * 0.4,
+          radiusPx * 0.05,
+          0,
+          0,
+          radiusPx
+        );
+        g.addColorStop(0, '#ffffff');
+        g.addColorStop(0.18, color);
+        g.addColorStop(0.85, color);
+        g.addColorStop(1, 'rgba(0,0,0,0.35)');
+        ctx.fillStyle = g;
+        ctx.globalAlpha = 0.95;
         ctx.beginPath();
-        ctx.arc(0, 0, Math.max(radiusPx, 4), 0, Math.PI * 2);
+        ctx.arc(0, 0, radiusPx, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        ctx.globalAlpha = 0.5;
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = 0.7;
         ctx.stroke();
         break;
       }
       case 'rect': {
-        const half = Math.max(radiusPx, 4);
+        const half = radiusPx;
+        if (glow) {
+          ctx.shadowColor = color;
+          ctx.shadowBlur = 12;
+        }
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.9;
         ctx.fillRect(-half, -half, half * 2, half * 2);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        ctx.globalAlpha = 0.5;
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+        ctx.lineWidth = 1.5;
         ctx.strokeRect(-half, -half, half * 2, half * 2);
         break;
       }
       case 'triangle': {
-        const r = Math.max(radiusPx, 5);
+        const r = radiusPx;
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.9;
         ctx.beginPath();
         ctx.moveTo(r, 0);
         ctx.lineTo(-r * 0.5, -r * 0.866);
@@ -255,33 +296,48 @@ export class Renderer {
     ctx.restore();
 
     if (label) {
-      this.drawLabel(wx, wy - size * 0.8, label, { color });
+      this.drawLabel(wx, wy - size * 0.95, label, { color });
     }
   }
 
+  /**
+   * @param {number} ox
+   * @param {number} oy
+   * @param {number} dx
+   * @param {number} dy
+   * @param {{ color?: string, width?: number, label?: string, labelSide?: number, labelPad?: number }} [opts]
+   * labelSide: +1 / -1 desplaza la etiqueta perpendicular al vector (evita solapes F/v)
+   */
   drawVector(ox, oy, dx, dy, opts = {}) {
     const ctx = this.ctx;
     const color = opts.color || '#ffb74d';
-    const width = opts.width || 2;
+    const width = opts.width || 2.5;
     const label = opts.label || '';
+    const labelSide = opts.labelSide != null ? opts.labelSide : 1;
+    const labelPad = opts.labelPad != null ? opts.labelPad : 14;
 
     const from = this.worldToCanvas(ox, oy);
     const to = this.worldToCanvas(ox + dx, oy + dy);
 
     const angle = Math.atan2(to.y - from.y, to.x - from.x);
-    const headLen = Math.min(12, Math.hypot(to.x - from.x, to.y - from.y) * 0.3);
+    const len = Math.hypot(to.x - from.x, to.y - from.y);
+    const headLen = Math.min(14, Math.max(8, len * 0.28));
 
     ctx.save();
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
     ctx.lineWidth = width;
     ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 6;
 
     ctx.beginPath();
     ctx.moveTo(from.x, from.y);
     ctx.lineTo(to.x, to.y);
     ctx.stroke();
 
+    ctx.shadowBlur = 0;
     ctx.beginPath();
     ctx.moveTo(to.x, to.y);
     ctx.lineTo(
@@ -297,10 +353,15 @@ export class Renderer {
 
     ctx.restore();
 
-    if (label) {
-      const midX = (from.x + to.x) / 2 + 10;
-      const midY = (from.y + to.y) / 2 - 10;
-      const mid = this.canvasToWorld(midX, midY);
+    if (label && len > 4) {
+      // Etiqueta a mitad del vector, desplazada perpendicular (no se superpone con otra flecha)
+      const mx = (from.x + to.x) / 2;
+      const my = (from.y + to.y) / 2;
+      const nx = -Math.sin(angle) * labelSide;
+      const ny = Math.cos(angle) * labelSide;
+      const lx = mx + nx * labelPad;
+      const ly = my + ny * labelPad;
+      const mid = this.canvasToWorld(lx, ly);
       this.drawLabel(mid.x, mid.y, label, { color, fontSize: 12 });
     }
   }
@@ -371,21 +432,18 @@ export class Renderer {
 
   getMousePos(event) {
     const rect = this.canvas.getBoundingClientRect();
-    const scaleX = this.canvas.width / rect.width;
-    const scaleY = this.canvas.height / rect.height;
-    const px = (event.clientX - rect.left) * scaleX;
-    const py = (event.clientY - rect.top) * scaleY;
+    // Coordenadas CSS (coherentes con setTransform(dpr) y cssSize())
+    const px = event.clientX - rect.left;
+    const py = event.clientY - rect.top;
     return this.canvasToWorld(px, py);
   }
 
   getPointerPos(event) {
     const rect = this.canvas.getBoundingClientRect();
-    const scaleX = this.canvas.width / rect.width;
-    const scaleY = this.canvas.height / rect.height;
     const clientX = event.clientX ?? event.touches?.[0]?.clientX ?? 0;
     const clientY = event.clientY ?? event.touches?.[0]?.clientY ?? 0;
-    const px = (clientX - rect.left) * scaleX;
-    const py = (clientY - rect.top) * scaleY;
+    const px = clientX - rect.left;
+    const py = clientY - rect.top;
     return { px, py, world: this.canvasToWorld(px, py) };
   }
 }

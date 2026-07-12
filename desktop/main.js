@@ -4,12 +4,55 @@
  * Útil cuando NetSupport u otras herramientas bloquean el navegador en el lab.
  */
 
-const { app, BrowserWindow, Menu, shell, dialog } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
+
+function worksFilePath() {
+  return path.join(app.getPath('userData'), 'fisicahn-works-v1.json');
+}
+
+function sessionFilePath() {
+  return path.join(app.getPath('userData'), 'fisicahn-session-mirror.json');
+}
+
+function registerIpc() {
+  ipcMain.handle('fisicahn:works-load', async () => {
+    try {
+      const p = worksFilePath();
+      if (!fs.existsSync(p)) return [];
+      const raw = fs.readFileSync(p, 'utf8');
+      const data = JSON.parse(raw);
+      return Array.isArray(data) ? data : Array.isArray(data?.works) ? data.works : [];
+    } catch (err) {
+      console.error('works-load', err);
+      return [];
+    }
+  });
+
+  ipcMain.handle('fisicahn:works-save', async (_evt, list) => {
+    try {
+      const arr = Array.isArray(list) ? list : [];
+      const p = worksFilePath();
+      fs.mkdirSync(path.dirname(p), { recursive: true });
+      fs.writeFileSync(p, JSON.stringify(arr), 'utf8');
+      return { ok: true, path: p, count: arr.length };
+    } catch (err) {
+      console.error('works-save', err);
+      return { ok: false, error: String(err?.message || err) };
+    }
+  });
+
+  ipcMain.handle('fisicahn:prompt', async (evt, { message, defaultValue }) => {
+    const win = BrowserWindow.fromWebContents(evt.sender) || mainWindow;
+    // Electron no tiene prompt nativo fiable: usamos un input simple vía dialog no existe;
+    // devolvemos default y el renderer usa modal HTML. Mantenemos el canal por compat.
+    return { cancelled: false, value: defaultValue ?? '', useHtmlModal: true };
+  });
+}
 
 function appIndexPath() {
   // En desarrollo: desktop/app/index.html (tras npm run sync)
@@ -25,7 +68,20 @@ function appIndexPath() {
   return candidates[0];
 }
 
+function resolveAppIcon() {
+  const candidates = [
+    path.join(__dirname, 'build', 'icon.png'),
+    path.join(__dirname, 'build', 'icon.ico'),
+    path.join(__dirname, 'build', 'icon.svg')
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return undefined;
+}
+
 function createWindow() {
+  const icon = resolveAppIcon();
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -34,12 +90,15 @@ function createWindow() {
     title: 'FísicaHN',
     backgroundColor: '#0c0f14',
     show: false,
+    ...(icon ? { icon } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true,
-      // El simulador es 100% local; no necesita web remota
+      // sandbox false: IPC de archivos de trabajos más fiable en todas las versiones
+      sandbox: false,
+      // Persistencia localStorage de respaldo
+      partition: 'persist:fisicahn',
       webSecurity: true
     }
   });
@@ -139,6 +198,7 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
+    registerIpc();
     buildMenu();
     createWindow();
     app.on('activate', () => {
