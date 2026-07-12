@@ -28,6 +28,14 @@ let dragging = false;
 
 const COLORS = ['#e8eef6', '#4fc3f7', '#66bb6a', '#ffb74d', '#ef5350', '#ce93d8', '#111827'];
 const ERASE_RADIUS = 18;
+/**
+ * Densidad del lápiz: ~7× más puntos que un solo sample por pointermove.
+ * Paso máximo entre puntos del trazo (px de canvas). Más bajo = trazo más suave
+ * y borrado más limpio (el borrador filtra por distancia a cada punto).
+ */
+const PEN_SAMPLE_STEP = 1.5;
+/** Pasos de borrado a lo largo del movimiento del cursor (evita saltos al arrastrar rápido). */
+const ERASE_PATH_STEP = ERASE_RADIUS / 7;
 
 function bgColor() {
   return lightBg ? '#f4f6f8' : '#0f0f1a';
@@ -149,6 +157,54 @@ function translateStroke(s, dx, dy) {
   }
 }
 
+/**
+ * Añade puntos del lápiz interpolando entre el último y el actual
+ * (~7 muestras por cada “salto” típico de pointermove).
+ */
+function appendPenPoints(stroke, p) {
+  const pts = stroke.points;
+  if (!pts.length) {
+    pts.push({ x: p.x, y: p.y });
+    return;
+  }
+  const last = pts[pts.length - 1];
+  const d = dist(last, p);
+  if (d < 0.35) {
+    // Micro-movimiento: actualiza el último punto (cursor “sigue” sin saturar)
+    last.x = p.x;
+    last.y = p.y;
+    return;
+  }
+  const n = Math.max(1, Math.ceil(d / PEN_SAMPLE_STEP));
+  for (let i = 1; i <= n; i++) {
+    const t = i / n;
+    pts.push({
+      x: last.x + (p.x - last.x) * t,
+      y: last.y + (p.y - last.y) * t
+    });
+  }
+}
+
+/**
+ * Parte un trazo de lápiz en segmentos contiguos (tras borrar en el medio).
+ * Evita que lineTo cruce el hueco borrado y se vea “raro”.
+ */
+function splitPenStroke(s, keepMask) {
+  const pts = s.points || [];
+  const out = [];
+  let run = [];
+  for (let i = 0; i < pts.length; i++) {
+    if (keepMask[i]) {
+      run.push(pts[i]);
+    } else if (run.length) {
+      if (run.length >= 2) out.push({ ...s, points: run });
+      run = [];
+    }
+  }
+  if (run.length >= 2) out.push({ ...s, points: run });
+  return out;
+}
+
 /** Borrador: elimina o recorta trazos cercanos al puntero (no pinta el fondo). */
 function eraseAt(p) {
   const r = Math.max(ERASE_RADIUS, lineWidth * 3);
@@ -160,13 +216,20 @@ function eraseAt(p) {
       continue;
     }
     if (s.type === 'pen' && s.points?.length) {
-      const kept = s.points.filter((q) => dist(p, q) > r);
-      if (kept.length >= 2) next.push({ ...s, points: kept });
-      else if (kept.length === 0) {
-        /* eliminado */
-      } else {
-        /* un solo punto: eliminar trazo corto */
+      const keepMask = s.points.map((q) => dist(p, q) > r);
+      // También quita puntos cuyo segmento al vecino pasa por el borrador
+      for (let i = 0; i < s.points.length - 1; i++) {
+        if (!keepMask[i] || !keepMask[i + 1]) continue;
+        if (distToSegment(p, s.points[i], s.points[i + 1]) <= r) {
+          // recorta el tramo: marca el más cercano al centro del borrador
+          const d0 = dist(p, s.points[i]);
+          const d1 = dist(p, s.points[i + 1]);
+          if (d0 <= d1) keepMask[i] = false;
+          else keepMask[i + 1] = false;
+        }
       }
+      const parts = splitPenStroke(s, keepMask);
+      for (const part of parts) next.push(part);
       continue;
     }
     if (s.from && s.to) {
@@ -180,6 +243,24 @@ function eraseAt(p) {
   }
   strokes = next;
   if (selected && !strokes.includes(selected)) selected = null;
+}
+
+/** Aplica borrador en varios puntos entre `from` y `to` (movimiento denso). */
+function eraseAlongPath(from, to) {
+  if (!from) {
+    eraseAt(to);
+    return;
+  }
+  const d = dist(from, to);
+  const step = Math.max(2, ERASE_PATH_STEP);
+  const n = Math.max(1, Math.ceil(d / step));
+  for (let i = 1; i <= n; i++) {
+    const t = i / n;
+    eraseAt({
+      x: from.x + (to.x - from.x) * t,
+      y: from.y + (to.y - from.y) * t
+    });
+  }
 }
 
 function onPointerDown(e) {
@@ -204,7 +285,7 @@ function onPointerDown(e) {
 
   if (tool === 'eraser') {
     eraseAt(p);
-    current = { type: 'erasing', last: p };
+    current = { type: 'erasing', last: { x: p.x, y: p.y } };
     return;
   }
 
@@ -213,7 +294,7 @@ function onPointerDown(e) {
       type: 'pen',
       color,
       width: lineWidth,
-      points: [p]
+      points: [{ x: p.x, y: p.y }]
     };
   } else {
     current = {
@@ -236,12 +317,13 @@ function onPointerMove(e) {
     return;
   }
   if (tool === 'eraser' && current?.type === 'erasing') {
-    eraseAt(p);
+    eraseAlongPath(current.last, p);
+    current.last = { x: p.x, y: p.y };
     return;
   }
   if (!current || current.type === 'erasing') return;
   if (current.points) {
-    current.points.push(p);
+    appendPenPoints(current, p);
   } else {
     current.to = p;
   }

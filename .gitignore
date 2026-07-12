@@ -1,10 +1,60 @@
+# --- Python / tooling local ---
 .venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# --- graphify / análisis local ---
 graphify-out/
 
-# Config local con keys reales (usa el .example en el repo)
-# Descomenta la línea siguiente si no quieres commitear keys en supabase-config.js:
-# website/js/supabase-config.js
-*.local.js
+# --- Entorno y secretos ---
 .env
 .env.*
+!.env.example
+*.local.js
 
+# Config en línea con keys reales (usa supabase-config.example.js en el repo)
+website/js/supabase-config.js
+# Copia generada por build-website.sh / sync (ZIP y sim servido)
+website/sim/js/supabase-config.js
+# Por si se copia config dentro de la fuente del lab
+skills/fisicahn/js/supabase-config.js
+
+# --- Desktop (Electron) ---
+desktop/node_modules/
+desktop/app/
+desktop/release/
+desktop/dist/
+desktop/*.log
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+*~
+*.swp
+*.swo
+.idea/
+.vscode/
+*.code-workspace
+
+# --- Temporales / basura de edición ---
+*.tmp
+*.temp
+*.bak
+*.orig
+website/js/*.tmp
+
+# --- Logs y cobertura ---
+*.log
+npm-debug.log*
+yarn-error.log*
+coverage/
+
+# --- Skills / packs ajenos al producto (opcional: no forman parte del lab) ---
+# Descomenta si no quieres versionar copias locales de skills de terceros:
+# skills/layers-skills/
+# skills/taste-skill/
+# skills/ui-ux-pro-max-skill/
+# skills/ponytail/
