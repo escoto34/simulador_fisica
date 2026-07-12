@@ -29,12 +29,30 @@ fi
 
 # Inyectar Supabase desde entorno (CI / local export)
 # Solo URL + anon key. NUNCA service_role.
-if [[ -n "${SUPABASE_URL:-}" && -n "${SUPABASE_ANON_KEY:-}" ]]; then
+# Limpia comillas/espacios/CR que a veces se pegan al copiar secrets.
+_raw_url="${SUPABASE_URL:-}"
+_raw_key="${SUPABASE_ANON_KEY:-}"
+_raw_url="${_raw_url//$'\r'/}"
+_raw_key="${_raw_key//$'\r'/}"
+_raw_url="$(printf '%s' "$_raw_url" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^["'\'']//' -e 's/["'\'']$//')"
+_raw_key="$(printf '%s' "$_raw_key" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^["'\'']//' -e 's/["'\'']$//')"
+
+if [[ -n "$_raw_url" && -n "$_raw_key" ]]; then
   echo "→ Escribiendo website/js/supabase-config.js desde variables de entorno"
+  echo "   URL host: $(printf '%s' "$_raw_url" | sed 's|https\?://||;s|/.*||')"
+  echo "   anonKey longitud: ${#_raw_key}"
+  if [[ "$_raw_url" != https://* ]]; then
+    echo "ERROR: SUPABASE_URL debe empezar por https:// (valor actual inválido o incompleto)" >&2
+    exit 1
+  fi
+  if [[ ${#_raw_key} -lt 20 || "$_raw_key" == *YOUR_* ]]; then
+    echo "ERROR: SUPABASE_ANON_KEY parece un placeholder o es demasiado corta" >&2
+    exit 1
+  fi
   # Escapar para JS string (barras y comillas)
-  _url="${SUPABASE_URL//\\/\\\\}"
+  _url="${_raw_url//\\/\\\\}"
   _url="${_url//\'/\\\'}"
-  _key="${SUPABASE_ANON_KEY//\\/\\\\}"
+  _key="${_raw_key//\\/\\\\}"
   _key="${_key//\'/\\\'}"
   cat > "$CFG" <<EOF
 /**
@@ -47,13 +65,24 @@ export default {
   enabled: true
 };
 EOF
-elif [[ ! -f "$CFG" ]]; then
-  echo "→ Creando supabase-config.js deshabilitado (sin SUPABASE_URL/ANON_KEY)"
-  cp "$DEST/js/supabase-config.example.js" "$CFG" 2>/dev/null || cat > "$CFG" <<'EOF'
+elif [[ "${CI:-}" == "true" || -n "${GITHUB_ACTIONS:-}" ]]; then
+  # En GitHub Actions sin secrets: deja claro el fallo (no uses example con YOUR_)
+  echo "→ ADVERTENCIA: sin SUPABASE_URL / SUPABASE_ANON_KEY en el entorno de build"
+  echo "   En GitHub: Settings → Secrets and variables → Actions"
+  echo "   Secrets de repositorio (no solo Environment): SUPABASE_URL y SUPABASE_ANON_KEY"
+  cat > "$CFG" <<'EOF'
+/** Generado en CI sin secrets — acceso docente deshabilitado */
 export default { url: '', anonKey: '', enabled: false };
 EOF
 else
-  echo "→ Conservando website/js/supabase-config.js existente"
+  if [[ ! -f "$CFG" ]]; then
+    echo "→ Creando supabase-config.js deshabilitado (sin SUPABASE_URL/ANON_KEY)"
+    cat > "$CFG" <<'EOF'
+export default { url: '', anonKey: '', enabled: false };
+EOF
+  else
+    echo "→ Conservando website/js/supabase-config.js existente (dev local)"
+  fi
 fi
 
 # Copiar config en el sim (USB / ZIP) para login docente y códigos online

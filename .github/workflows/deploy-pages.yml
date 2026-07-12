@@ -1,7 +1,11 @@
 # Despliega website/ en GitHub Pages.
-# Secrets opcionales (Settings → Secrets and variables → Actions):
+#
+# Secrets de REPOSITORIO (Settings → Secrets and variables → Actions → Repository secrets):
 #   SUPABASE_URL       — https://xxxx.supabase.co
-#   SUPABASE_ANON_KEY  — anon public key (NUNCA service_role)
+#   SUPABASE_ANON_KEY  — anon public (NUNCA service_role)
+#
+# No uses solo "Environment secrets" del entorno github-pages para el job de build
+# (ese job no hereda secrets de environment salvo que se declare environment).
 #
 # Activa Pages: Settings → Pages → Source: GitHub Actions
 
@@ -26,25 +30,58 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        # v4 estable en Pages; submodules:false evita clonar gitlinks rotos
         uses: actions/checkout@v4
         with:
           submodules: false
           fetch-depth: 1
 
-      - name: Build website
+      - name: Check Supabase secrets
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
+          if [ -z "${SUPABASE_URL}" ]; then
+            echo "::error::SUPABASE_URL está vacío. Añádelo en Settings → Secrets and variables → Actions → Repository secrets (nombre exacto: SUPABASE_URL)."
+            echo "Si lo pusiste solo en Environment «github-pages», muévelo a Repository secrets o duplica ahí."
+            exit 1
+          fi
+          if [ -z "${SUPABASE_ANON_KEY}" ]; then
+            echo "::error::SUPABASE_ANON_KEY está vacío. Añádelo como Repository secret (nombre exacto: SUPABASE_ANON_KEY), clave anon public."
+            exit 1
+          fi
+          echo "OK: secrets presentes (URL len=${#SUPABASE_URL}, key len=${#SUPABASE_ANON_KEY})"
+          if [[ "${SUPABASE_URL}" != https://* ]]; then
+            echo "::error::SUPABASE_URL debe empezar por https:// (sin comillas ni espacios al pegar)."
+            exit 1
+          fi
+          if [[ "${SUPABASE_URL}" == *supabase.co* ]]; then
+            echo "OK: host Supabase detectado en la URL"
+          else
+            echo "::warning::La URL no contiene supabase.co — verifica que sea la Project URL del dashboard"
+          fi
+
+      - name: Build website
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          CI: "true"
+        run: |
           chmod +x scripts/build-website.sh
           ./scripts/build-website.sh
-          # Asegura index en la raíz del artefacto (no el README del repo)
           test -f website/index.html
+          test -f website/js/supabase-config.js
           touch website/.nojekyll
+          # Comprueba que la config publicada no es placeholder
+          if grep -qE "YOUR_|enabled: false|anonKey: ''|anonKey: \"\"" website/js/supabase-config.js; then
+            echo "::error::website/js/supabase-config.js sigue sin configurar tras el build"
+            # No imprime el archivo (puede tener keys); solo indicadores
+            grep -E "url:|enabled:" website/js/supabase-config.js | sed 's/anonKey.*/anonKey: [oculta]/'
+            exit 1
+          fi
+          echo "OK: supabase-config.js generado para el artefacto de Pages"
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-pages-artifact@v3
         with:
           path: website
 
@@ -57,4 +94,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@v4
