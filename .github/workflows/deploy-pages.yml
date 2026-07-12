@@ -26,10 +26,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        # v4 estable en Pages; submodules:false evita clonar gitlinks rotos
+        uses: actions/checkout@v4
         with:
-          # No hay submódulos válidos; un gitlink roto rompía el deploy.
           submodules: false
+          fetch-depth: 1
 
       - name: Build website
         env:
