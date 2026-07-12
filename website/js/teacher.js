@@ -185,7 +185,10 @@ document.getElementById('authForm')?.addEventListener('submit', async (e) => {
   if (!isCloudEnabled()) {
     setMsg(
       authMsg,
-      'El acceso en línea no está configurado en este sitio. Contacta al administrador del despliegue.',
+      'El acceso en línea no está configurado en este despliegue. ' +
+        'El administrador debe definir SUPABASE_URL y SUPABASE_ANON_KEY ' +
+        '(GitHub → Settings → Secrets and variables → Actions) y volver a publicar, ' +
+        'o crear website/js/supabase-config.js en local y servir desde website/.',
       false
     );
     return;
@@ -226,7 +229,13 @@ document.getElementById('authForm')?.addEventListener('submit', async (e) => {
 document.getElementById('btnRegister')?.addEventListener('click', async () => {
   setMsg(authMsg, '');
   if (!isCloudEnabled()) {
-    setMsg(authMsg, 'El acceso en línea no está configurado. Contacta al administrador del despliegue.', false);
+    setMsg(
+      authMsg,
+      'El acceso en línea no está configurado en este despliegue. ' +
+        'Faltan las claves del backend (SUPABASE_URL + SUPABASE_ANON_KEY en secrets de GitHub Actions, ' +
+        'o supabase-config.js en desarrollo local).',
+      false
+    );
     return;
   }
   const school = document.getElementById('tSchool').value;
