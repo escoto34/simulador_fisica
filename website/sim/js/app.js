@@ -118,7 +118,12 @@ function bindEngineCallbacks() {
   engine.onUpdate = onEngineUpdate;
   engine.onRender = onEngineRender;
   engine.onPauseChanged = () => updatePlayPauseUI();
-  engine.onResize = () => renderer?.invalidateCssSize?.();
+  engine.onResize = () => {
+    if (renderer) {
+      renderer.setDpr?.(engine._dpr || 1);
+      renderer.invalidateCssSize?.();
+    }
+  };
 }
 
 /**
@@ -136,7 +141,8 @@ function ensureEngine() {
     renderer = new Renderer(canvas, {
       worldWidth: 20,
       worldHeight: 15,
-      ctx: engine.ctx
+      ctx: engine.ctx,
+      dpr: engine._dpr || 1
     });
     bindEngineCallbacks();
     return true;
@@ -357,6 +363,7 @@ function showCatalog() {
   simShell.hidden = true;
   document.body.classList.add('view-catalog');
   document.body.classList.remove('view-sim');
+  setMobileParamsExpanded(false);
   // Cortar el bucle RAF por completo (cero CPU en el menú)
   try {
     engine?.stop?.();
@@ -375,6 +382,15 @@ function showSimShell() {
   simShell.hidden = false;
   document.body.classList.add('view-sim');
   document.body.classList.remove('view-catalog');
+  setMobileParamsExpanded(false);
+  bindMobileSimBar();
+  // Tras mostrar el lab, el canvas pasa a tener tamaño real → redimensionar buffer
+  requestAnimationFrame(() => {
+    engine?.resizeCanvas?.();
+    engine?.requestPaint?.();
+    // Segundo frame: layouts flex en tablets a veces resuelven altura un tick después
+    requestAnimationFrame(() => engine?.resizeCanvas?.());
+  });
 }
 
 /** Barra lateral: todos los módulos de simulación (+ acceso a trabajos). */
@@ -567,17 +583,64 @@ function togglePause() {
 }
 
 function updatePlayPauseUI() {
-  if (!playPauseBtn || !playPauseLabel || !simStatus) return;
   const paused = engine?.isPaused?.() ?? true;
-  const icon = playPauseBtn.querySelector('svg');
-  playPauseLabel.textContent = paused ? 'Reproducir' : 'Pausa';
-  simStatus.textContent = paused ? 'Pausado' : 'En ejecución';
+  if (playPauseLabel) playPauseLabel.textContent = paused ? 'Reproducir' : 'Pausa';
+  if (simStatus) simStatus.textContent = paused ? 'Pausado' : 'En ejecución';
+  const mobilePlay = document.getElementById('mobilePlayBtn');
+  if (mobilePlay) mobilePlay.textContent = paused ? 'Reproducir' : 'Pausa';
+  const icon = playPauseBtn?.querySelector('svg');
   if (!icon) return;
   if (paused) {
     icon.innerHTML = '<polygon points="6 4 20 12 6 20"/>';
   } else {
     icon.innerHTML =
       '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>';
+  }
+}
+
+function setMobileParamsExpanded(open) {
+  const params = document.getElementById('mobileParamsBtn');
+  document.body.classList.toggle('mobile-params-expanded', open);
+  if (params) {
+    params.textContent = open ? 'Cerrar params' : 'Parámetros';
+    params.classList.toggle('primary', !!open);
+  }
+  let scrim = document.getElementById('mobileParamsScrim');
+  if (open) {
+    if (!scrim) {
+      scrim = document.createElement('button');
+      scrim.type = 'button';
+      scrim.id = 'mobileParamsScrim';
+      scrim.className = 'mobile-params-scrim';
+      scrim.setAttribute('aria-label', 'Cerrar panel de parámetros');
+      scrim.addEventListener('click', () => setMobileParamsExpanded(false));
+      document.body.appendChild(scrim);
+    }
+    scrim.hidden = false;
+  } else if (scrim) {
+    scrim.hidden = true;
+  }
+  requestAnimationFrame(() => engine?.resizeCanvas?.());
+}
+
+function bindMobileSimBar() {
+  const play = document.getElementById('mobilePlayBtn');
+  const params = document.getElementById('mobileParamsBtn');
+  const reset = document.getElementById('mobileResetBtn');
+  if (play && play.dataset.bound !== '1') {
+    play.dataset.bound = '1';
+    play.addEventListener('click', () => togglePause());
+  }
+  if (params && params.dataset.bound !== '1') {
+    params.dataset.bound = '1';
+    params.addEventListener('click', () => {
+      const open = !document.body.classList.contains('mobile-params-expanded');
+      setMobileParamsExpanded(open);
+    });
+  }
+  if (reset && reset.dataset.bound !== '1') {
+    reset.dataset.bound = '1';
+    reset.addEventListener('click', () => resetBtn?.click());
   }
 }
 
@@ -844,6 +907,9 @@ function applyModuleCharts(charts) {
 
 function onEngineRender(ctx, alpha, elapsed) {
   if (state.view !== 'sim' || !renderer || !engine) return;
+  // Sincronizar DPR y limpiar buffer completo (evita basura de color en Android)
+  renderer.setDpr?.(engine._dpr || 1);
+  engine.applyDprTransform?.();
   renderer.clear();
   const inst = state.moduleInstances[state.currentModule];
   const skipGrid = inst && inst.skipWorldGrid === true;
@@ -853,6 +919,8 @@ function onEngineRender(ctx, alpha, elapsed) {
   if (inst && typeof inst.render === 'function') {
     inst.render(ctx, alpha, elapsed);
   }
+  // Tras módulos que tocan setTransform (p. ej. pizarra), restaurar espacio CSS
+  engine.applyDprTransform?.();
   drawMeasureOverlays(ctx);
   renderer.drawOverlays();
   if (fpsCounter) {

@@ -27,17 +27,19 @@ export function update(dt) {
   t += dt;
 }
 
-export function render(ctx, alpha, elapsed) {
+export function render(ctx) {
+  // Usar coordenadas CSS (el motor ya aplicó setTransform(dpr))
   const canvas = ctx.canvas;
-  const w = canvas.clientWidth || canvas.width;
-  const h = canvas.clientHeight || canvas.height;
+  const dpr = Math.max(window.devicePixelRatio || 1, 1);
+  const w = canvas.clientWidth || canvas.width / dpr || 320;
+  const h = canvas.clientHeight || canvas.height / dpr || 240;
   ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = 'rgba(12, 15, 20, 0.35)';
   ctx.fillRect(0, 0, w, h);
   ctx.fillStyle = '#9aa8b8';
   ctx.font = '600 18px system-ui, sans-serif';
   ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
   ctx.fillText(title, w / 2, h / 2 - 12);
   ctx.font = '14px system-ui, sans-serif';
   ctx.fillStyle = '#6b7a8c';

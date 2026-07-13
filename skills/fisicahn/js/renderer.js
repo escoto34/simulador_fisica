@@ -20,10 +20,10 @@ export class Renderer {
    */
   constructor(canvas, opts = {}) {
     this.canvas = canvas;
-    // Reutilizar el mismo contexto del motor si existe (evita 2 getContext)
+    // Reutilizar el mismo contexto del motor (nunca un segundo getContext con flags distintos)
     this.ctx =
       opts.ctx ||
-      canvas.getContext('2d', { alpha: false, desynchronized: true }) ||
+      canvas.getContext('2d', { alpha: false }) ||
       canvas.getContext('2d');
 
     this.worldWidth = opts.worldWidth || 20;
@@ -40,6 +40,8 @@ export class Renderer {
     this._cssH = 600;
     this._cssDirty = true;
     this._gridFont = null;
+    /** DPR lógico (sincronizado con PhysicsEngine) */
+    this._dpr = opts.dpr || 1;
   }
 
   /** Marca tamaño CSS como sucio (resize). */
@@ -47,12 +49,29 @@ export class Renderer {
     this._cssDirty = true;
   }
 
+  setDpr(dpr) {
+    this._dpr = Math.max(dpr || 1, 1);
+  }
+
   /** Tamaño lógico CSS (tras HiDPI el buffer puede ser mayor). */
   cssSize() {
     if (this._cssDirty) {
       const c = this.canvas;
-      this._cssW = c.clientWidth || c.width || 800;
-      this._cssH = c.clientHeight || c.height || 600;
+      // Preferir client* (CSS px). Si buffer/dpr es la única pista, usarlo.
+      const dpr = this._dpr || 1;
+      let w = c.clientWidth;
+      let h = c.clientHeight;
+      if (!w || !h) {
+        const rect = c.getBoundingClientRect();
+        w = rect.width;
+        h = rect.height;
+      }
+      if (!w || !h) {
+        w = (c.width || 800) / dpr;
+        h = (c.height || 600) / dpr;
+      }
+      this._cssW = Math.max(1, w);
+      this._cssH = Math.max(1, h);
       this._cssDirty = false;
     }
     return { w: this._cssW, h: this._cssH };
@@ -61,15 +80,17 @@ export class Renderer {
   clear() {
     // Una lectura de tamaño por frame; worldToCanvas reutiliza la caché
     this._cssDirty = true;
-    const { w, h } = this.cssSize();
-    // Con setTransform(dpr) clear en px CSS; sin él, buffer completo
-    this.ctx.save();
-    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    this.ctx.restore();
-    // Relleno fondo opaco (ctx alpha:false)
-    this.ctx.fillStyle = '#0f0f1a';
-    this.ctx.fillRect(0, 0, w, h);
+    this.cssSize();
+    const ctx = this.ctx;
+    const dpr = this._dpr || 1;
+    const bw = this.canvas.width || 1;
+    const bh = this.canvas.height || 1;
+    // Relleno en píxeles de dispositivo (cubre todo el buffer; evita basura GPU)
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#0f0f1a';
+    ctx.fillRect(0, 0, bw, bh);
+    // Volver a coordenadas CSS para el resto del frame
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   setCamera(x, y) {

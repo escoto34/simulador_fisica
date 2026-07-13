@@ -114,6 +114,10 @@ export function initPanelResize(opts = {}) {
 
     handle.addEventListener('pointerdown', (e) => {
       if (!body.classList.contains('view-sim')) return;
+      // En tablet/móvil el layout apilado no usa asas
+      if (typeof matchMedia === 'function' && matchMedia('(max-width: 1100px)').matches) {
+        return;
+      }
       dragging = true;
       body.classList.add('is-resizing-panels');
       startX = e.clientX;

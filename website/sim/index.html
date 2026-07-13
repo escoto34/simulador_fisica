@@ -2,7 +2,10 @@
 <html lang="es" class="dark-theme">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0f0f1a">
   <title>FísicaHN — Simulador Interactivo de Física</title>
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="css/main.css">
@@ -98,6 +101,11 @@
       <canvas id="simCanvas" width="800" height="600">
         Tu navegador no soporta el elemento canvas de HTML5.
       </canvas>
+      <div class="mobile-sim-bar" id="mobileSimBar" aria-label="Acciones táctiles">
+        <button type="button" class="ctrl-btn primary" id="mobilePlayBtn" aria-label="Reproducir o pausar">Reproducir</button>
+        <button type="button" class="ctrl-btn" id="mobileParamsBtn" aria-label="Ampliar parámetros">Parámetros</button>
+        <button type="button" class="ctrl-btn" id="mobileResetBtn" aria-label="Reiniciar">Reiniciar</button>
+      </div>
       <div class="canvas-footer">
         <span class="fps-counter" id="fpsCounter">0 FPS</span>
         <span class="sim-status" id="simStatus">▶ En ejecución</span>

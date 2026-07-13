@@ -237,12 +237,79 @@
   box-shadow: 0 0 0 3px rgba(79, 195, 247, 0.45);
 }
 
+@media (max-width: 900px) {
+  .catalog-view {
+    padding: 16px 14px 28px;
+    padding-left: max(14px, env(safe-area-inset-left));
+    padding-right: max(14px, env(safe-area-inset-right));
+    padding-bottom: max(28px, env(safe-area-inset-bottom));
+  }
+
+  .catalog-header {
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  .catalog-title {
+    font-size: 1.25rem;
+  }
+
+  .catalog-subtitle {
+    font-size: 0.82rem;
+  }
+
+  .catalog-pizarra-btn {
+    padding: 10px 14px;
+    font-size: 0.85rem;
+    min-height: 42px;
+  }
+
+  .catalog-grid {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+    gap: 12px;
+  }
+
+  .catalog-card {
+    min-height: 108px;
+    padding: 14px;
+  }
+}
+
 @media (max-width: 720px) {
   .catalog-view {
-    padding: 16px;
+    padding: 12px 12px 24px;
   }
 
   .catalog-grid {
     grid-template-columns: 1fr;
+  }
+
+  .catalog-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .catalog-card {
+    min-height: 96px;
+  }
+
+  .catalog-card-title {
+    font-size: 0.95rem;
+  }
+
+  .catalog-card-blurb {
+    font-size: 0.8rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .catalog-brand .logo-icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .catalog-pizarra-btn {
+    flex: 1 1 auto;
+    text-align: center;
   }
 }
