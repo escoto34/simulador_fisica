@@ -3,7 +3,7 @@
 App **Android** del simulador con **Capacitor** (WebView nativo).  
 Fuente del lab: `skills/fisicahn/` (igual que web y desktop).
 
-Versión de empaquetado: **1.2.0** · `applicationId`: `hn.fisica.simulador`  
+Versión de empaquetado: **1.3.0** · `applicationId`: `hn.fisica.simulador`  
 Nombre en el menú del celular: **FísicaHN**
 
 ## ¿Para qué?
@@ -32,7 +32,7 @@ export PATH="$JAVA_HOME/bin:$PATH"
 
 ## Generar APK (release firmado) — flujo completo con desktop
 
-Desde tu máquina (medido con v**1.2.0**):
+Desde tu máquina (medido con v**1.3.0**):
 
 ```bash
 # 1) Desktop Linux
@@ -64,13 +64,13 @@ npm run build:release
 
 | Archivo | Tamaño aprox. | Uso |
 |---------|---------------|-----|
-| **`FisicaHN-1.2.0-release.apk`** | **~3.5 MB** | **GitHub Releases / aula** (firmado) |
-| `FisicaHN-1.2.0-debug.apk` | ~4.4 MB | Solo desarrollo |
+| **`FisicaHN-1.3.0-release.apk`** | **~3.5 MB** | **GitHub Releases / aula** (firmado) |
+| `FisicaHN-1.3.0-debug.apk` | ~4.4 MB | Solo desarrollo |
 
 Instalar:
 
 ```bash
-adb install -r release/FisicaHN-1.2.0-release.apk
+adb install -r release/FisicaHN-1.3.0-release.apk
 ```
 
 O copia el APK al dispositivo y ábrelo (permitir instalar apps desconocidas si hace falta).
@@ -87,10 +87,10 @@ O copia el APK al dispositivo y ábrelo (permitir instalar apps desconocidas si 
 
 ## Qué poner en GitHub Releases
 
-En el release **v1.2.0** adjunta el APK firmado junto a los instaladores desktop:
+En el release **v1.3.0** adjunta el APK firmado junto a los instaladores desktop:
 
-- `mobile/release/FisicaHN-1.2.0-release.apk` ← **sí**
-- `FisicaHN-1.2.0-debug.apk` ← **no** (salvo que quieras builds de prueba)
+- `mobile/release/FisicaHN-1.3.0-release.apk` ← **sí**
+- `FisicaHN-1.3.0-debug.apk` ← **no** (salvo que quieras builds de prueba)
 
 Ver también la tabla del README principal del repo.
 
@@ -116,10 +116,10 @@ cd android && ./gradlew bundleRelease
 
 ## Subir versión
 
-1. `mobile/package.json` → `"version": "1.3.0"`
+1. `mobile/package.json` → `"version": "1.4.0"` (siguiente subida)
 2. `mobile/android/app/build.gradle`:
-   - `versionName "1.3.0"`
-   - `versionCode` **+1** (p. ej. 3 → 4)
+   - `versionName "1.4.0"`
+   - `versionCode` **+1** (p. ej. 4 → 5)
 3. `npm run build:release`
 
 ## Estructura
